@@ -13,7 +13,7 @@ builder.Services.AddScoped<IOrderService, OrderService>();
 var app = builder.Build();
 
 // Setup Endpoints
-app.MapGet("/", () => "Hello World!");
+app.MapGet("/", () => "Order Book API Server!");
 app.SetupCategoryEndpoints();
 app.SetupOrderEndpoints();
 

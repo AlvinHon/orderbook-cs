@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using OrderBook.Models;
 
 /// <summary>
-/// Database context for the order book.
+/// The database context for the order book.
 /// </summary>
 public class OrderBookDbContext : DbContext
 {

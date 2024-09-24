@@ -1,5 +1,8 @@
 namespace OrderBook.Models;
 
+/// <summary>
+/// Entity representing an order.
+/// </summary>
 public class Order
 {
     public int Id { get; set; }
@@ -8,6 +11,6 @@ public class Order
     public decimal Quantity { get; set; }
     public DateTime CreatedAt { get; set; }
 
-    public required int CategoryId { get; set; }
-    public required Category Category { get; set; }
+    public int CategoryId { get; set; }
+    public Category Category { get; set; } = null!;
 }

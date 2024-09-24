@@ -1,12 +1,13 @@
 namespace OrderBook.Models;
 
+/// <summary>
+/// Represents the result of placing an order.
+/// </summary>
 public record PlaceOrderResult(int Id, OrderType Type, decimal PriceAt, decimal OriginalQuantity, decimal ConsumedQuantity, string Category)
 {
-
-    public static PlaceOrderResult consumeQuantity(ref Order order, decimal consumedQuantity)
+    public PlaceOrderResult(Order order, decimal consumedQuantity, string Category) : this(
+        order.Id, order.Type, order.Price, order.Quantity, consumedQuantity, Category
+    )
     {
-        var OriginalQuantity = order.Quantity;
-        order.Quantity -= consumedQuantity;
-        return new PlaceOrderResult(order.Id, order.Type, order.Price, OriginalQuantity, consumedQuantity, order.Category.Name);
     }
 }

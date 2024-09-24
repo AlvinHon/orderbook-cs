@@ -1,12 +1,12 @@
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Storage;
-using Microsoft.Extensions.DependencyModel;
 using OrderBook.Data;
 using OrderBook.Models;
 
 namespace OrderBook.Services;
 
-
+/// <summary>
+/// Service implementing IOrderService for handling orders.
+/// </summary>
 public class OrderService : IOrderService
 {
     private readonly OrderBookDbContext _dbCtx;
@@ -16,64 +16,52 @@ public class OrderService : IOrderService
         _dbCtx = dbCtx;
     }
 
-    public async Task<List<PlaceOrderResult>> PlaceOrderAsync(PlaceOrderType type, decimal? limitPrice, decimal quantity, Category category)
+    public async Task<IOrderService.ServePlaceOrderResult> PlaceOrderAsync(PlaceOrderType type, decimal? limitPrice, decimal quantity, Category category)
     {
         var transaction = await _dbCtx.Database.BeginTransactionAsync();
 
-        List<Order> ordersInMarket = [];
         try
         {
-            Console.WriteLine($"Placing order: {type} {limitPrice} {quantity} {category.Name}");
-            // Get the current orders avaliable in the market
-            var targetOrderType = type == PlaceOrderType.Buy ? OrderType.Ask : OrderType.Bid;
-            ordersInMarket = targetOrderType switch
-            {
-                OrderType.Ask => await GetAskOrdersByLimitPriceAsync(limitPrice, category),
-                OrderType.Bid => await GetBidOrdersByLimitPriceAsync(limitPrice, category),
-                _ => throw new NotImplementedException()
-            };
+            // Get the current orders avaliable in the market. Throws CannotDetermineMarketPriceException if the market price cannot be determined.
+            var targetType = type == PlaceOrderType.Buy ? OrderType.Ask : OrderType.Bid;
+            List<Order> ordersInMarket = await GetOrdersByTypeAsync(targetType, limitPrice, category);
 
-            Console.WriteLine($"Orders in market: {ordersInMarket.Count}");
+            // Update the orders in the market.
+            var results = ConsumeQuantityOfOrdersInMarket(ordersInMarket, quantity, category.Name);
 
-            // If the limit price is null and there are no orders available in the market, throw an exception
-            if (limitPrice is null && ordersInMarket.Count == 0)
-            {
-                throw new CannotDetermineMarketPriceException();
-            }
-
-            // Update the orders in the market. Throws InsufficientQuantityException if the market quantity is not enough
-            var results = ConsumeQuantityOfOrdersInMarket(ordersInMarket, quantity);
-
-            // If the quantity is still greater than 0, handle the order due to unmatched quantity
-            if (results.Count == 0)
-            {
-                await HandlePlaceOrderDueToUnmatchQuantity(ordersInMarket, targetOrderType, limitPrice, quantity, category);
-            }
-            else
+            if (results.Count > 0)
             {
                 // Update the orders in the database
                 UpdateOrdersInMarketFromResults(results);
+
+                await _dbCtx.SaveChangesAsync();
+                await transaction.CommitAsync();
+                return IOrderService.ServePlaceOrderResult.createPlaceOrderResult(results);
             }
 
+            // If the quantity is not enough to fulfill the order, place the order in the market.
+            var result = await HandlePlaceOrderDueToUnmatchQuantity(type, limitPrice, quantity, category);
+
             await _dbCtx.SaveChangesAsync();
-
-            return results;
-
-        }
-        catch (InsufficientQuantityException)
-        {
-            await transaction.RollbackAsync();
-            return [];
+            await transaction.CommitAsync();
+            return result;
         }
         catch (Exception e)
         {
-            Console.WriteLine(e.Message);
+            Console.WriteLine(e);
             await transaction.RollbackAsync();
-            return [];
+            throw;
         }
     }
 
-    List<PlaceOrderResult> ConsumeQuantityOfOrdersInMarket(List<Order> orders, decimal quantity)
+    /// <summary>
+    /// Consume the quantity of the orders in the market.
+    /// </summary>
+    /// <param name="orders">The orders in the market.</param>
+    /// <param name="quantity">The quantity to consume.</param>
+    /// <param name="categoryName">The name of the category.</param>
+    /// <returns>The results of the orders that have been updated.</returns>
+    List<PlaceOrderResult> ConsumeQuantityOfOrdersInMarket(List<Order> orders, decimal quantity, string categoryName)
     {
         List<PlaceOrderResult> results = [];
 
@@ -84,21 +72,26 @@ public class OrderService : IOrderService
 
             if (order.Quantity >= quantity)
             {
-                results.Add(PlaceOrderResult.consumeQuantity(ref order, quantity));
+                results.Add(new PlaceOrderResult(order, quantity, categoryName));
                 quantity = 0;
             }
             else
             {
                 quantity -= order.Quantity;
 
-                results.Add(PlaceOrderResult.consumeQuantity(ref order, order.Quantity));
+                results.Add(new PlaceOrderResult(order, order.Quantity, categoryName));
             }
         });
 
-        // If the quantity is still greater than 0, return empty list
-        return quantity > 0 ? [] : results;
+        return results;
     }
 
+    /// <summary>
+    /// Update the orders in the market from the results of the orders that have been placed.
+    /// If the order has been fully consumed, delete the order.
+    /// If the order has been partially consumed, update the quantity of the order.
+    /// </summary>
+    /// <param name="results">The results of the orders that have been placed.</param>
     void UpdateOrdersInMarketFromResults(List<PlaceOrderResult> results)
     {
         results.ForEach(async r =>
@@ -115,14 +108,26 @@ public class OrderService : IOrderService
         });
     }
 
-
-    async Task HandlePlaceOrderDueToUnmatchQuantity(List<Order> orders, OrderType type, decimal? limitPrice, decimal quantity, Category category)
+    /// <summary>
+    /// Handle the place order due to the unmatch quantity. It is called when the quantity of the order
+    /// cannot be consumed by the orders in the market.
+    /// </summary>
+    /// <param name="type">The type of the order.</param>
+    /// <param name="limitPrice">The limit price of the order. Null if it is Market order.</param>
+    /// <param name="quantity">The quantity of the order.</param>
+    /// <param name="category">The category of the order.</param>
+    /// <returns>The result of the order that has been placed.</returns>
+    async Task<IOrderService.ServePlaceOrderResult> HandlePlaceOrderDueToUnmatchQuantity(PlaceOrderType type, decimal? limitPrice, decimal quantity, Category category)
     {
+        // Get the orders in the market
+        var targetType = type == PlaceOrderType.Buy ? OrderType.Bid : OrderType.Ask;
+        List<Order> orders = await GetOrdersByTypeAsync(targetType, limitPrice, category);
+
         // if it is a limit order, the target price is the limit price, otherwise it is the market price which is 
         // the highest bid price or the lowest ask price, depending on the order type.
         var targetPrice =
             limitPrice ?? // Limit order
-            type switch   // Market order
+            targetType switch   // Market order
             {
                 OrderType.Ask => orders.MinBy(o => o.Price)!.Price,
                 OrderType.Bid => orders.MaxBy(o => o.Price)!.Price,
@@ -130,52 +135,68 @@ public class OrderService : IOrderService
             };
 
         // find the order with same price
-        var orderWithSamePrice = orders.First(
-                    o => o.Type == type &&
+        var orderWithSamePrice = orders.Find(
+                    o => o.Type == targetType &&
                     o.Price == limitPrice &&
                     o.CategoryId == category.Id);
-
         // update the quantity with same price
         if (orderWithSamePrice is not null)
         {
             orderWithSamePrice.Quantity += quantity;
+            return IOrderService.ServePlaceOrderResult.createUpdatedOrderResult(orderWithSamePrice);
         }
         else // create a new order
         {
-            await CreateOrderAsync(type, targetPrice, quantity, category);
+            return IOrderService.ServePlaceOrderResult.createCreatedOrderResult(
+                await CreateOrderAsync(targetType, targetPrice, quantity, category)
+            );
         }
     }
 
     public async Task<Order?> GetOrderAsync(int id)
     {
-        return await _dbCtx.Orders.FindAsync(id);
+        return await _dbCtx.Orders.Include(o => o.Category).FirstOrDefaultAsync(o => o.Id == id);
     }
 
     public async Task<List<Order>> GetOrdersAsync()
     {
-        return await _dbCtx.Orders.ToListAsync();
+        return await _dbCtx.Orders.Include(o => o.Category).ToListAsync();
     }
 
-    async Task<List<Order>> GetAskOrdersByLimitPriceAsync(decimal? limitPrice, Category category)
+    /// <summary>
+    /// Get the orders by the type of the order, the limit price, and the category.
+    /// The goal of this method is to get the orders that are available in the market.
+    /// 
+    /// There are two types of orders: Ask and Bid.
+    /// The result contains the cheapest orders when the type is Ask and the most expensive orders when the type is Bid.
+    /// If limit price is null, the result contains all orders.
+    /// </summary>
+    /// <param name="type">The type of the querying orders.</param>
+    /// <param name="limitPrice">The limit price of the querying orders.</param>
+    /// <param name="category">The category of the querying orders.</param>
+    /// <returns>The list of orders.</returns>
+    /// <exception cref="CannotDetermineMarketPriceException">Thrown when the market price cannot be determined.</exception>
+    async Task<List<Order>> GetOrdersByTypeAsync(OrderType type, decimal? limitPrice, Category category)
     {
         var isMarketOrder = limitPrice is null;
-        return await _dbCtx.Orders.Where(
-                o => o.Type == OrderType.Ask &&
-                (isMarketOrder || o.Price <= limitPrice) &&
-                o.CategoryId == category.Id)
-                .OrderBy(o => o.Price)
-                .ToListAsync();
-    }
+        var isAsk = type == OrderType.Ask;
 
-    async Task<List<Order>> GetBidOrdersByLimitPriceAsync(decimal? limitPrice, Category category)
-    {
-        var isMarketOrder = limitPrice is null;
-        return await _dbCtx.Orders.Where(
-                o => o.Type == OrderType.Bid &&
-                (isMarketOrder || o.Price >= limitPrice) &&
-                o.CategoryId == category.Id)
-                .OrderByDescending(o => o.Price)
-                .ToListAsync();
+        var query = _dbCtx.Orders.Where(
+            o => o.Type == type &&
+            (isMarketOrder || (isAsk ? o.Price <= limitPrice : o.Price >= limitPrice)) &&
+            o.CategoryId == category.Id);
+
+        var results = isAsk ?
+            await query.OrderBy(o => (double)o.Price).ToListAsync() :
+            await query.OrderByDescending(o => (double)o.Price).ToListAsync();
+
+        // If the limit price is null and there are no orders available in the market, throw an exception
+        if (isMarketOrder && results.Count == 0)
+        {
+            throw new CannotDetermineMarketPriceException();
+        }
+
+        return results;
     }
 
     async Task<Order> CreateOrderAsync(OrderType type, decimal price, decimal quantity, Category category)
@@ -194,7 +215,7 @@ public class OrderService : IOrderService
         return order;
     }
 
-    public async Task<bool> DeleteOrderAsync(int id)
+    async Task<bool> DeleteOrderAsync(int id)
     {
         var order = await _dbCtx.Orders.FindAsync(id);
 
@@ -205,14 +226,10 @@ public class OrderService : IOrderService
         return true;
     }
 
-    class InsufficientQuantityException : Exception
-    {
-        public InsufficientQuantityException() : base("Insufficient quantity")
-        {
-        }
-    }
-
-    class CannotDetermineMarketPriceException : Exception
+    /// <summary>
+    /// Exception thrown when the market price cannot be determined.
+    /// </summary>
+    public class CannotDetermineMarketPriceException : Exception
     {
         public CannotDetermineMarketPriceException() : base("Cannot determine market price")
         {

@@ -4,6 +4,9 @@ using OrderBook.Models;
 
 namespace OrderBook.Services;
 
+/// <summary>
+/// Service implementing CRUD operations for Category.
+/// </summary>
 public class CategoryService : ICategoryService
 {
     private readonly OrderBookDbContext _dbCtx;

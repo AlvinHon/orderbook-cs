@@ -6,7 +6,7 @@
 # Content-Type: application/json
 
 # {
-#   "name": "Test"
+#   "name": "Test 2"
 # }
 
 # PUT http://localhost:5022/category/4
@@ -21,12 +21,14 @@
 
 # GET http://localhost:5022/order
 
-POST http://localhost:5022/order
-Content-Type: application/json
+# GET http://localhost:5022/order/1
 
-{
-  "CategoryId": 2,
-  "PlaceOrderType": "Buy",
-  "LimitPrice": 100,
-  "Quantity": 100
-}
+# POST http://localhost:5022/order
+# Content-Type: application/json
+
+# {
+#   "CategoryId": 2,
+#   "PlaceOrderType": "Sell",
+#   "LimitPrice": 100,
+#   "Quantity": 200
+# }

@@ -6,10 +6,6 @@ namespace OrderBook.RouteEndpoints;
 
 public static class CategoryEndpoints
 {
-    /// <summary>
-    /// Setup the endpoints for the category.
-    /// </summary>
-    /// <param name="app">The web application.</param>
     public static void SetupCategoryEndpoints(this WebApplication app)
     {
         var groupCategory = app.MapGroup("category").WithParameterValidation();
