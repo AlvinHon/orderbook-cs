@@ -1,0 +1,32 @@
+# This is a sample HTTP request file for Visual Studio Code's REST Client extension
+
+# GET http://localhost:5022/category
+
+# POST http://localhost:5022/category
+# Content-Type: application/json
+
+# {
+#   "name": "Test"
+# }
+
+# PUT http://localhost:5022/category/4
+# Content-Type: application/json
+
+# {
+#   "name": "Test 4"
+# }
+
+# DELETE http://localhost:5022/category/1
+
+
+# GET http://localhost:5022/order
+
+POST http://localhost:5022/order
+Content-Type: application/json
+
+{
+  "CategoryId": 2,
+  "PlaceOrderType": "Buy",
+  "LimitPrice": 100,
+  "Quantity": 100
+}
