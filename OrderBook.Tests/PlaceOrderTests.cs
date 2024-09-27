@@ -398,7 +398,7 @@ public class PlaceOrderTests
         // Expected:
         // | Type | Price | Quantity |
         // |------|-------|----------|
-        // | Ask  | 100    | 100     |
+        // | Bid  | 100    | 100     |
         //
         // (The result of consumed order should be only 100 at price 200)
 

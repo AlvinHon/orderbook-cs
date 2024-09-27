@@ -1,13 +1,13 @@
 # Order Book API Server
 
-It is an example project for an API server implemented in `ASP.NET C#` that allows users to place order to order books.
+It is an example project for an API server implemented in `ASP.NET C#` that allows users to place orders to order books.
 
 The web application implements a simple logic of order book:
-- An `Order` is consisted of an amount of Price and a quantity.
-- Order can be placed for an action either a `Buy` or a `Sell`.
-- Placing a Buy order will consume the quantity of the selling order (i.e. Ask) in the market with lowest price first.
-- Placing a Sell order will consume the quantity of the buying order (i.e. Bid) in the market with highest price first. 
-- If the market cannot filfull the Buy/Sell request, either a new order will be place in the market or existing order with same price will increase the quantity.
+- An `Order` consists of an amount of Price and a quantity.
+- Orders can be placed for an action either a `Buy` or a `Sell`.
+- Placing a Buy order will consume the quantity of the selling order (i.e., Ask) in the market with the lowest price first.
+- Placing a Sell order will consume the quantity of the buying order (i.e., Bid) in the market with the highest price first.
+- If the market cannot fulfill the Buy/Sell request, either a new order will be placed in the market or an existing order with the same price will increase the quantity.
 - Orders are grouped by `Category`.
 
 ## API
